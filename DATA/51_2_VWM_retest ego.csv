@@ -1,0 +1,18 @@
+51_2_VWM_retest ego;12/19/2017;18:06:35;Virtual Water Maze - RMT for fMRI [Sept. 2016]
+no;cond;finished;time[sec];path length[px];beeline[px]
+1;M1_cued_target;1;80;20081;16674
+2;X2_no_target;1;43;10499;9915
+3;M2_cued_target;1;51;10694;10700
+4;X2_no_target;1;43;12822;12027
+5;M3_cued_target;1;59;12778;12662
+6;X2_no_target;1;39;10973;10670
+7;M2_cued_target;1;52;10624;10702
+8;X2_no_target;1;42;12050;11140
+9;M1_cued_target;1;75;19041;16646
+10;X2_no_target;1;38;10488;10248
+11;M3_cued_target;1;121;31113;13449
+12;X2_no_target;1;40;10809;10514
+13;M1_cued_target;1;82;19502;16640
+14;X2_no_target;1;61;16142;10906
+15;M2_cued_target;1;124;33913;11434
+16;X2_no_target;1;41;11531;10865
