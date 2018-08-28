@@ -21,8 +21,20 @@ filepaths = sort_nat(lsDir(fullfile(home,'LOG'),{'log'}))';
 error_table   = table;
 error_counter = 1;
 
+general_counter = 1;
+
+% Two variables below are used to record differences between beging events
+% and end events, and between end events and stopped events.
+
+delay_table = table;
+delay_table_counter = 1;
+
+% Two variables below are used to calculate duration of button pressed.
+stopped_diff_counter = 1;
+stopped_diffs = [];
 %% Start looping over files
 for iLog = 1:length(filepaths)
+    tbl_filt = table; % reset the variable
     iLog
     tbl = import_log_files(filepaths{iLog});
     tbl.pseudo_row = zeros(height(tbl),1); % This column will tell whether a row was artificially added.
@@ -132,18 +144,52 @@ for iLog = 1:length(filepaths)
         error('Check last trial type')
     end
     
-    %% Find indices where event_type was changed
-    idx_event_change = ~cellfun(@strcmp,tbl.event_type(1:end-1),tbl.event_type(2:end));
-%     assert(strcmp(tbl.event_type{end},'Begin'),'Last trial_type is not Begin'); 
-    % The above line just makes sure it ends with the "begin" trial_type. 
-    % idx_event_change won't tag onto the very last row, because of how 
-    % its defined. But thats ok if the last row is "Begin" trial type.
-    
-    % Filter the table to keep only rows where change happened, including
-    % last row.
-    tbl_filt = []; % reset the variable. Might not be necessary
-    tbl_filt = [tbl(idx_event_change,:); tbl(end,:)];
-    
+    %% Find indices where event_type was changed. And get rid of redundant "stopped" rows.
+%     idx_event_change = ~cellfun(@strcmp,tbl.event_type(1:end-1),tbl.event_type(2:end));
+% %     assert(strcmp(tbl.event_type{end},'Begin'),'Last trial_type is not Begin'); 
+%     % The above line just makes sure it ends with the "begin" trial_type. 
+%     % idx_event_change won't tag onto the very last row, because of how 
+%     % its defined. But thats ok if the last row is "Begin" trial type.
+%     
+%     % Filter the table to keep only rows where change happened, including
+%     % last row.
+%     tbl_filt = []; % reset the variable. Might not be necessary
+%     tbl_filt = [tbl(idx_event_change,:); tbl(end,:)];
+
+    %% Get rid of redundant "stopped" rows.  
+    filt_counter = 1;
+    for iRow = 1:height(tbl)
+%         stopped_diff_counter
+        % If the event_type is not stopped, record that row in the filtered
+        % table.
+        if ~strcmp(tbl.event_type{iRow},'Stopped')
+            tbl_filt(filt_counter,:) = tbl(iRow,:);
+
+            filt_counter = filt_counter + 1;
+        
+        else % if it is "Stopped":
+            
+            % Check if previous row was NOT a "Stopped", then add to
+            % filtered table. So this means its the first "Stopped" event.
+            if ~strcmp(tbl.event_type{iRow - 1},'Stopped')
+                tbl_filt(filt_counter,:) = tbl(iRow,:);    
+                
+                filt_counter = filt_counter + 1;
+                
+                % record when exactly that first "Stopped" press happened.
+                % Used later to calculate how long the button was pressed.
+                assert(size(stopped_diffs,1) < stopped_diff_counter); %sanity check.
+                
+                stopped_diffs(stopped_diff_counter,1) = tbl.sync_onset(iRow);
+            elseif ~strcmp(tbl.event_type{iRow + 1},'Stopped') % So if its the last "Stopped" entry
+                % Calculate how long the button was pressed.
+                stopped_diffs(stopped_diff_counter,2) = tbl.sync_onset(iRow);
+                stopped_diffs(stopped_diff_counter,3) = stopped_diffs(stopped_diff_counter,2) - stopped_diffs(stopped_diff_counter,1);
+                
+                stopped_diff_counter = stopped_diff_counter + 1;
+            end    
+        end
+    end
     %% If trial started and ended very quickly, its a bug. Remove that trial and adjust trial_ID    
     if (tbl_filt.sync_onset(2) - tbl_filt.sync_onset(1)) < 2000
         if strcmp(tbl_filt.event_type{2},'Stopped') && strcmp(tbl_filt.event_type{3},'End')
@@ -191,9 +237,10 @@ for iLog = 1:length(filepaths)
        elseif strcmp(tbl_filt.event_type{iRow},'Stopped') && ~strcmp(tbl_filt.event_type{iRow+1},'End')
            input('Stopped not followed by End') 
        elseif strcmp(tbl_filt.event_type{iRow},'End') && ~strcmp(tbl_filt.event_type{iRow+1},'Begin')
-           input('End not followed by Begin') 
+           disp(filepaths{iLog});
+           iRow
+           input('End not followed by Begin.') 
        end
-       
        
     end
     
@@ -206,13 +253,13 @@ for iLog = 1:length(filepaths)
     idx_stopped = find(strcmp(tbl_filt.event_type,'Stopped'));
     idx_end     = find(strcmp(tbl_filt.event_type,'End'));
     
-    assert(isequal(numel(idx_begin),numel(idx_end)),'Number of Begin and End lines don''t match');
-    assert(isequal(numel(idx_begin),numel(idx_stopped)),'Number of Begin and Stopped lines don''t match');    
+%     assert(isequal(numel(idx_begin),numel(idx_end)),'Number of Begin and End lines don''t match');
+%     assert(isequal(numel(idx_begin),numel(idx_stopped)),'Number of Begin and Stopped lines don''t match');    
     % Sanity checks: make sure "stopped" "end" "begin" repeats as it
     % should.
     
     %% Create a new table, with trial_ID, trial_onset, trial_offset.
-    onsets1.(condition).(['sub_' sub_ID]).(stage) = table;
+    onsets.(condition).(['sub_' sub_ID]).(stage) = table;
     
     for iTrial = 1:n_trials  
         onsets.(condition).(['sub_' sub_ID]).(stage).trial_ID(iTrial)         = iTrial;
@@ -225,16 +272,14 @@ for iLog = 1:length(filepaths)
         onsets.(condition).(['sub_' sub_ID]).(stage).distance_moved_2(iTrial) = tbl_filt.distance_moved_2(idx_stopped(iTrial));
         onsets.(condition).(['sub_' sub_ID]).(stage).ITI(iTrial)              = tbl_filt.sync_onset(idx_end(iTrial)) - tbl_filt.sync_onset(idx_stopped(iTrial));
         
+        % Record differences between begin-end, end-stopped.
+        if iTrial > 1
+            delay_table.begin_min_end  (delay_table_counter) = tbl_filt.sync_onset(idx_begin(iTrial)) - tbl_filt.sync_onset(idx_end(iTrial-1));
+            delay_table.end_min_stopped(delay_table_counter) = tbl_filt.sync_onset(idx_end(iTrial))   - tbl_filt.sync_onset(idx_stopped(iTrial));
+            
+            delay_table_counter = delay_table_counter + 1;
+        end
         
-        eval(['onsets.' condition '.sub_' sub_ID '.' stage '.trial_ID(iTrial) = iTrial;']);
-        eval(['onsets.' condition '.sub_' sub_ID '.' stage '.trial_onset(iTrial) = tbl_filt.sync_onset(idx_begin(iTrial));']);
-        eval(['onsets.' condition '.sub_' sub_ID '.' stage '.target_lock(iTrial) = tbl_filt.sync_onset(idx_stopped(iTrial));']);
-        eval(['onsets.' condition '.sub_' sub_ID '.' stage '.trial_dur(iTrial) = tbl_filt.sync_onset(idx_stopped(iTrial)) - tbl_filt.sync_onset(idx_begin(iTrial));']);
-        eval(['onsets.' condition '.sub_' sub_ID '.' stage '.trial_dur_30_sec(iTrial) = 30000;']);
-        eval(['onsets.' condition '.sub_' sub_ID '.' stage '.trial_name(iTrial) = tbl_filt.trial_Name(idx_begin(iTrial));']);
-        eval(['onsets.' condition '.sub_' sub_ID '.' stage '.distance_moved_1(iTrial) = tbl_filt.distance_moved_1(idx_stopped(iTrial));']);
-        eval(['onsets.' condition '.sub_' sub_ID '.' stage '.distance_moved_2(iTrial) = tbl_filt.distance_moved_2(idx_stopped(iTrial));']);
-        eval(['onsets.' condition '.sub_' sub_ID '.' stage '.ITI(iTrial) = tbl_filt.sync_onset(idx_end(iTrial)) - tbl_filt.sync_onset(idx_stopped(iTrial));']);
     end
 end % iLog
 
